@@ -97,6 +97,11 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // this.server.emit('updateUserList', onlineUsersInRoom);
     this.server.emit('updateUserList', Array.from(this.onlineUsers));
   }
+  @SubscribeMessage('test')
+  handleTest(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
+    console.log('Received test event:', data);
+    client.emit('testResponse', { message: 'Hello from server' });
+  }
 
   @SubscribeMessage('getOnlineUsers')
   getOnlineUsers() {
@@ -109,6 +114,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: { to: string },
     @ConnectedSocket() client: Socket,
   ) {
+    console.log('sendInvite in gatewaygame with data: ', data);
     try {
       const token = client.handshake.headers.authorization?.split(' ')[1]; // "Bearer <token>"
 
@@ -123,6 +129,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // Emit receiveInvite to the specific user using their socket ID
       client.to(to).emit('receiveInvite', { from: decoded.username });
     } catch (error) {
+      console.log('Error sending invite in game gateway:', error);
       client.disconnect();
     }
   }
@@ -131,22 +138,23 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleAcceptInvite(
     @MessageBody() data: { from: string },
     @ConnectedSocket() client: Socket,
-  ) {
+  ): Promise<string> {
     try {
       const token = client.handshake.headers.authorization?.split(' ')[1];
-
       const decoded = this.jwtService.verify(token, {
         secret: process.env.JWT_SECRET,
       });
 
-      const roomId = `room-${data.from}-${decoded.username}`; // Create room ID using usernames
+      const roomId = `room-${data.from}-${decoded.username}`; // Use usernames for room ID
+
       console.log('Room ID created: ', roomId);
       client.join(roomId);
       client.to(data.from).emit('joinRoom', { roomId }); // Tell 'from' user to join
 
-      return roomId; // Return roomId
+      return roomId;
     } catch (error) {
       console.error('Error accepting invite', error);
+
       client.disconnect();
     }
   }
@@ -166,8 +174,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const { roomId } = data;
 
       client.join(roomId);
-      console.log(`User ${decoded.username} joined room: ${roomId}`); // Log with username
 
+      console.log(`User ${decoded.username} joined room: ${roomId}`); // Log with username
       client.emit('joinedRoom', { roomId });
       client.to(roomId).emit('joinedRoom', { roomId });
     } catch (error) {
@@ -182,10 +190,10 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     try {
       const token = client.handshake.headers.authorization?.split(' ')[1]; // "Bearer <token>"
+
       const decoded = this.jwtService.verify(token, {
         secret: process.env.JWT_SECRET,
       });
-      // Now emits username instead of client ID
 
       client
         .to(data.roomId)
